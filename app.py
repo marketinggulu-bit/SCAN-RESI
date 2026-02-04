@@ -5,15 +5,18 @@ import pandas as pd
 from datetime import datetime
 import streamlit.components.v1 as components
 
-# --- KONEKSI GSHEETS ---
+# --- KONEKSI GSHEETS (VERSI AMAN UNTUK ONLINE) ---
 @st.cache_resource
 def init_gsheet():
+    # Mengambil data dari menu Secrets Streamlit, bukan dari file credentials.json
+    creds_dict = st.secrets["gspread_credentials"] 
+    creds = Credentials.from_service_account_info(creds_dict)
+    
     scope = ['https://www.googleapis.com/auth/spreadsheets', "https://www.googleapis.com/auth/drive"]
-    creds = Credentials.from_service_account_file('credentials.json', scopes=scope)
-    client = gspread.authorize(creds)
+    client = gspread.authorize(creds.with_scopes(scope))
+    
+    # Membuka file GSheet (Pastikan nama file ini sama persis di Google Drive Anda)
     return client.open("DB_Reparasi_Produk").sheet1
-
-sh = init_gsheet()
 
 # --- INITIAL STATE ---
 if 'antrean_data' not in st.session_state:
@@ -219,4 +222,5 @@ elif menu == "Lacak":
                 col2.write(f": {waktu or '-'}")
                 
         else:
+
             st.error("❌ Nomor Resi tidak ditemukan.")
