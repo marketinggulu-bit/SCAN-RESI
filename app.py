@@ -107,49 +107,53 @@ if menu == "Dashboard":
         st.info("Database kosong.")
 
 # --- LOGIKA SCAN ---
+# --- LOGIKA SCAN (VERSI STABIL & RAPI) ---
 elif "Scan" in menu:
     divisi = menu.replace("Scan ", "")
-    st.markdown(f"# 🔍 Scan {divisi} (Otomatis)")
+    st.markdown(f"# 🔍 Scan {divisi}")
 
-    # --- JAVASCRIPT SCANNER ENGINE ---
-    # Komponen ini menjalankan kamera dan mendeteksi barcode secara real-time di browser
-    scan_result = components.html(
-        """
-        <script src="https://unpkg.com/html5-qrcode"></script>
-        <div id="reader" style="width:100%; border-radius:15px; overflow:hidden;"></div>
-        <script>
-            function onScanSuccess(decodedText, decodedResult) {
-                // Kirim hasil scan ke Streamlit
-                window.parent.postMessage({
-                    type: 'streamlit:setComponentValue',
-                    value: decodedText
-                }, '*');
+    # Menampilkan area scanner hanya jika menu aktif
+    # Menggunakan container untuk memastikan script tidak merusak elemen UI lain
+    with st.container():
+        scan_result = components.html(
+            """
+            <script src="https://unpkg.com/html5-qrcode"></script>
+            <div id="reader" style="width:100%; border-radius:15px; background:#f8f9fa;"></div>
+            <script>
+                function onScanSuccess(decodedText, decodedResult) {
+                    window.parent.postMessage({
+                        type: 'streamlit:setComponentValue',
+                        value: decodedText
+                    }, '*');
+                }
                 
-                // Berhenti scan sebentar agar tidak double input
-                html5QrcodeScanner.clear();
-                setTimeout(() => { location.reload(); }, 1000);
-            }
+                // Konfigurasi scanner yang lebih ringan agar tidak berat di HP
+                let html5QrcodeScanner = new Html5QrcodeScanner(
+                    "reader", { 
+                        fps: 10, 
+                        qrbox: {width: 250, height: 150},
+                        rememberLastUsedCamera: true
+                    }
+                );
+                html5QrcodeScanner.render(onScanSuccess);
+            </script>
+            """,
+            height=400,
+        )
 
-            let html5QrcodeScanner = new Html5QrcodeScanner(
-                "reader", { fps: 15, qrbox: {width: 250, height: 150} }
-            );
-            html5QrcodeScanner.render(onScanSuccess);
-        </script>
-        """,
-        height=350,
-    )
-
-    # Menangkap hasil dari JavaScript
+    # Logika penangkapan hasil scan
     if scan_result:
+        # Cek apakah resi sudah ada di daftar antrean agar tidak duplikat
         if scan_result not in st.session_state.antrean_data[divisi]:
             st.session_state.antrean_data[divisi].append(scan_result)
-            st.toast(f"✅ Terdeteksi: {scan_result}")
+            st.toast(f"✅ Berhasil Scan: {scan_result}")
+            # Rerun otomatis agar daftar di bawah langsung terupdate
             st.rerun()
 
-    st.write("---")
+    st.markdown("---")
     
-    # Input Manual tetap disediakan sebagai cadangan
-    val_manual = st.text_input("Ketik Manual (Jika Kamera Gagal):", key="input_resi")
+    # Input Manual tetap ada sebagai cadangan
+    val_manual = st.text_input("Ketik Manual / Scan Tembak:", key=f"input_{divisi}")
     if val_manual:
         if val_manual not in st.session_state.antrean_data[divisi]:
             st.session_state.antrean_data[divisi].append(val_manual)
@@ -157,19 +161,23 @@ elif "Scan" in menu:
 
     # --- DAFTAR ANTREAN ---
     curr_list = st.session_state.antrean_data[divisi]
-    st.markdown(f"### 📋 Antrean {divisi} ({len(curr_list)})")
+    st.markdown(f"### 📋 Daftar Antrean {divisi} ({len(curr_list)})")
     
+    # Menampilkan list resi yang sudah di-scan
     for i, resi in enumerate(curr_list):
-        st.markdown(f"<div class='resi-card'>📦 RESI: {resi}</div>", unsafe_allow_html=True)
-        if st.button("🗑️ Hapus", key=f"del_{divisi}_{i}"):
+        col_list, col_del = st.columns([4, 1])
+        col_list.markdown(f"<div class='resi-card'>📦 {resi}</div>", unsafe_allow_html=True)
+        if col_del.button("🗑️", key=f"del_{divisi}_{i}"):
             st.session_state.antrean_data[divisi].pop(i)
             st.rerun()
 
+    # Tombol konfirmasi final ke Google Sheets
     if curr_list:
-        if st.button(f"🚀 KONFIRMASI PINDAH KE {divisi.upper()}", type="primary", use_container_width=True):
+        st.write("")
+        if st.button(f"🚀 SELESAI & PINDAH KE {divisi.upper()}", type="primary", use_container_width=True):
             simpan_ke_gsheet(curr_list, divisi)
             st.session_state.antrean_data[divisi] = []
-            st.success("Data Berhasil Diperbarui!")
+            st.success("✅ Data Berhasil Disimpan!")
             st.rerun()
 # --- LOGIKA MONITORING ---
 elif "Mon " in menu:
@@ -225,6 +233,7 @@ elif menu == "Lacak":
                 col1.write(f"**{label}**")
                 col2.write(f": {waktu or '-'}")
         else: st.error("❌ Resi tidak ditemukan.")
+
 
 
 
