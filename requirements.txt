@@ -2,3 +2,6 @@ streamlit
 gspread
 google-auth
 pandas
+streamlit-camera-input-live
+opencv-python-headless
+pyzbar
