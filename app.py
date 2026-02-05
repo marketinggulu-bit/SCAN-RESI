@@ -44,47 +44,61 @@ def simpan_ke_gsheet(list_resi, status_baru):
             row_data[kolom_idx[status_baru]-1] = waktu_skrg
             sh.append_row(row_data)
 
-# --- UI STYLE (DARK MODE & MOBILE FRIENDLY) ---
+# --- UI STYLE (DARK MODE COMPATIBLE) ---
 st.set_page_config(page_title="Reparasi Pro", layout="centered")
 st.markdown("""
     <style>
-    /* Paksa teks agar putih di mode gelap dan hitam di mode terang */
-    .stApp { color: inherit; }
-    
-    /* Card Resi agar terlihat jelas di background gelap */
+    .main h1, .main h2, .main h3, .main p { text-align: center !important; }
+    /* Card Resi agar terlihat di Dark Mode */
     .resi-card {
-        background-color: rgba(255, 255, 255, 0.15); 
-        padding: 12px; border-radius: 10px;
-        border: 1px solid rgba(255, 255, 255, 0.3);
-        margin-bottom: 8px; text-align: center;
-        font-weight: bold; font-size: 1.1em;
+        background-color: rgba(255, 255, 255, 0.1); 
+        padding: 15px; border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        margin-bottom: 10px; text-align: center;
+        font-weight: bold;
     }
-    
-    /* Tombol konfirmasi agar kontras */
-    .stButton > button {
-        border-radius: 10px; font-weight: bold;
+    [data-testid="stSidebar"] .stButton > button {
+        width: 100%; text-align: left !important; border-radius: 8px;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# --- SIDEBAR ---
+# --- SIDEBAR NAVIGASI (MENGEMBALIKAN MENU MONITORING) ---
 with st.sidebar:
     st.markdown("## 🛠️ Reparasi Pro")
     if st.button("📊 DASHBOARD UTAMA"): st.session_state.menu_aktif = "Dashboard"
+    
     st.markdown("### 📥 AREA SCAN")
     for s in ["Penyerahan", "Cetak", "Produksi", "Kirim"]:
         if st.button(f"🔹 {s}"): st.session_state.menu_aktif = f"Scan {s}"
+    
+    # MENGEMBALIKAN MENU MONITORING
+    st.markdown("### 🖥️ MONITORING")
+    for m in ["Penyerahan", "Cetak", "Produksi"]:
+        if st.button(f"📋 Monitor {m}"): st.session_state.menu_aktif = f"Mon {m}"
+    
     st.markdown("---")
     if st.button("🔍 LACAK RESI"): st.session_state.menu_aktif = "Lacak"
 
 menu = st.session_state.menu_aktif
 
-# --- LOGIKA SCAN (OPTIMASI HP) ---
-if "Scan" in menu:
+# --- LOGIKA DASHBOARD ---
+if menu == "Dashboard":
+    st.markdown("# 📊 Ringkasan Produksi")
+    data = sh.get_all_records()
+    if data:
+        df = pd.DataFrame(data)
+        for stat in ["Penyerahan", "Cetak", "Produksi"]:
+            st.metric(f"📦 {stat.upper()}", f"{len(df[df['status_terakhir']==stat])} resi")
+    else:
+        st.info("Database kosong.")
+
+# --- LOGIKA SCAN (FIX INPUT CEPAT) ---
+elif "Scan" in menu:
     divisi = menu.replace("Scan ", "")
     st.markdown(f"# 🔍 Scan {divisi}")
 
-    # Agar kursor langsung di kotak input
+    # Script Auto-Focus
     components.html("""
         <script>
         var input = window.parent.document.querySelector('input[data-testid="stTextInput-input"]');
@@ -96,40 +110,72 @@ if "Scan" in menu:
     res_input = st.text_input("Arahkan Scanner Ke Sini:", key=f"in_{divisi}")
 
     if res_input:
-        # Masukkan ke daftar jika belum ada
         if res_input not in st.session_state.antrean_data[divisi]:
             st.session_state.antrean_data[divisi].append(res_input)
-            # Notifikasi kecil di HP
             st.toast(f"✅ {res_input} ditambahkan")
-            # Langsung kosongkan input dengan rerun
             st.rerun()
 
-    # Tampilkan Daftar Antrean
+    # Tampilan Daftar Antrean
     curr_list = st.session_state.antrean_data[divisi]
     st.markdown(f"### 📋 Antrean ({len(curr_list)})")
     
+    for i, resi in enumerate(curr_list):
+        c1, c2 = st.columns([5, 1])
+        c1.markdown(f"<div class='resi-card'>📦 {resi}</div>", unsafe_allow_html=True)
+        if c2.button("🗑️", key=f"del_{i}"):
+            st.session_state.antrean_data[divisi].pop(i)
+            st.rerun()
+
     if curr_list:
-        for i, resi in enumerate(curr_list):
-            c1, c2 = st.columns([5, 1])
-            c1.markdown(f"<div class='resi-card'>📦 {resi}</div>", unsafe_allow_html=True)
-            if c2.button("🗑️", key=f"del_{i}"):
-                st.session_state.antrean_data[divisi].pop(i)
-                st.rerun()
-
-        # Tombol Konfirmasi
-        st.write("")
         if st.button(f"🚀 KONFIRMASI {divisi.upper()}", type="primary", use_container_width=True):
-            with st.spinner("Menyimpan..."):
-                simpan_ke_gsheet(curr_list, divisi)
-                st.session_state.antrean_data[divisi] = []
-                st.success("✅ Berhasil Disimpan!")
-                import time
-                time.sleep(1)
-                st.rerun()
-    else:
-        st.info("Scan barcode untuk memulai antrean.")
+            simpan_ke_gsheet(curr_list, divisi)
+            st.session_state.antrean_data[divisi] = []
+            st.success("✅ Berhasil Disimpan!")
+            st.rerun()
 
-# --- LOGIKA DASHBOARD & LACAK TETAP SAMA ---
-elif menu == "Dashboard":
-    st.markdown("# 📊 Ringkasan")
-    # ... (sisanya sama dengan sebelumnya)
+# --- LOGIKA MONITORING (YANG SEBELUMNYA HILANG) ---
+elif "Mon " in menu:
+    target = menu.replace("Mon ", "")
+    st.markdown(f"# 🖥️ Monitor {target}")
+    data_mon = sh.get_all_records()
+    if data_mon:
+        df_mon = pd.DataFrame(data_mon)
+        filter_df = df_mon[df_mon['status_terakhir'] == target].copy()
+        st.write(f"Total di bagian ini: **{len(filter_df)} resi**")
+        st.markdown("---")
+        
+        if not filter_df.empty:
+            filter_df = filter_df.iloc[::-1] # Urutkan terbaru di atas
+            for _, row in filter_df.iterrows():
+                late = False
+                if row.get('waktu_penyerahan'):
+                    try:
+                        w_awal = datetime.strptime(str(row['waktu_penyerahan']), "%Y-%m-%d %H:%M:%S")
+                        if (datetime.now() - w_awal).total_seconds() > 86400:
+                            late = True
+                    except: pass
+                
+                with st.expander(f"{'🚨' if late else '📦'} {row['resi_id']} {'(>24 JAM!)' if late else ''}"):
+                    st.write(f"📥 Penyerahan: {row.get('waktu_penyerahan') or '-'}")
+                    st.write(f"🖨️ Cetak: {row.get('waktu_cetak') or '-'}")
+                    st.write(f"⚒️ Produksi: {row.get('waktu_produksi') or '-'}")
+        else:
+            st.info(f"Belum ada data di bagian {target}.")
+
+# --- LOGIKA LACAK ---
+elif menu == "Lacak":
+    st.markdown("# 🔍 Lacak Resi")
+    cari = st.text_input("Masukkan No Barcode:")
+    if cari:
+        df = pd.DataFrame(sh.get_all_records())
+        res = df[df['resi_id'].astype(str) == cari]
+        if not res.empty:
+            r = res.iloc[0]
+            st.subheader(f"Status Saat Ini: {r['status_terakhir']}")
+            tahapan = [("📥 Penyerahan", r.get('waktu_penyerahan')), ("🖨️ Cetak", r.get('waktu_cetak')), ("⚒️ Produksi", r.get('waktu_produksi')), ("🚚 Kirim", r.get('waktu_kirim'))]
+            for lab, val in tahapan:
+                c1, c2 = st.columns([1, 1])
+                c1.write(f"**{lab}**")
+                c2.write(f": {val or '-'}")
+        else:
+            st.error("Resi tidak ditemukan.")
