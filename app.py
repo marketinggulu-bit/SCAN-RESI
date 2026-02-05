@@ -4,7 +4,10 @@ from google.oauth2.service_account import Credentials
 import pandas as pd
 from datetime import datetime
 import streamlit.components.v1 as components
-
+from camera_input_live import camera_input_live
+from pyzbar.pyzbar import decode
+import cv2
+import numpy as np
 # --- KONEKSI GSHEETS (VERSI AMAN SECRETS) ---
 @st.cache_resource
 def init_gsheet():
@@ -108,30 +111,45 @@ if menu == "Dashboard":
 # --- LOGIKA SCAN ---
 elif "Scan" in menu:
     divisi = menu.replace("Scan ", "")
-    st.markdown(f"# 🔍 Scan {divisi}")
-    
-    col_in, col_cam = st.columns([5, 1])
-    with col_in:
-        def handle_input():
-            val = st.session_state.input_resi
-            if val and val not in st.session_state.antrean_data[divisi]:
-                st.session_state.antrean_data[divisi].append(val)
-            st.session_state.input_resi = ""
-        st.text_input("Ketik / Scan Barcode (Klik Enter):", key="input_resi", on_change=handle_input)
+    st.markdown(f"# 🔍 Scan {divisi} (Otomatis)")
 
-    with col_cam:
-        if st.button("📸"): st.session_state.show_cam = not st.session_state.get('show_cam', False)
-
+    # 1. Fitur Auto-Focus Tetap Ada untuk Scanner Fisik/Manual
     components.html(
         """<script>
         var input = window.parent.document.querySelector('input[data-testid="stTextInput-input"]');
         if (input) { input.focus(); }
         </script>""", height=0,
     )
+    
+    # 2. Kotak Input Manual
+    val_manual = st.text_input("Ketik / Scan Manual:", key="input_resi")
+    if val_manual:
+        if val_manual not in st.session_state.antrean_data[divisi]:
+            st.session_state.antrean_data[divisi].append(val_manual)
+            st.rerun()
 
-    if st.session_state.get('show_cam', False):
-        st.camera_input("Ambil Foto", key="cam_hp", label_visibility="collapsed")
+    # 3. Kamera Scan Otomatis
+    st.write("---")
+    st.caption("Arahkan kamera ke barcode untuk scan otomatis")
+    image = camera_input_live(show_controls=False, key="auto_scan")
 
+    if image:
+        # Konversi gambar dari kamera ke format yang bisa dibaca OpenCV
+        bytes_data = image.read()
+        nparr = np.frombuffer(bytes_data, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        # Deteksi Barcode 
+        barcodes = decode(img)
+        
+        for barcode in barcodes:
+            barcode_data = barcode.data.decode('utf-8')
+            if barcode_data not in st.session_state.antrean_data[divisi]:
+                st.session_state.antrean_data[divisi].append(barcode_data)
+                st.toast(f"✅ Terdeteksi: {barcode_data}")
+                st.rerun()
+
+    # 4. Daftar Antrean
     curr_list = st.session_state.antrean_data[divisi]
     st.markdown(f"### Daftar Antrean {divisi} ({len(curr_list)})")
     for i, resi in enumerate(curr_list):
@@ -201,3 +219,4 @@ elif menu == "Lacak":
                 col1.write(f"**{label}**")
                 col2.write(f": {waktu or '-'}")
         else: st.error("❌ Resi tidak ditemukan.")
+
