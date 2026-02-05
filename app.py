@@ -44,26 +44,30 @@ def simpan_ke_gsheet(list_resi, status_baru):
             row_data[kolom_idx[status_baru]-1] = waktu_skrg
             sh.append_row(row_data)
 
-# --- UI STYLE (DARK MODE COMPATIBLE) ---
+# --- UI STYLE (OPTIMASI DARK MODE) ---
 st.set_page_config(page_title="Reparasi Pro", layout="centered")
 st.markdown("""
     <style>
     .main h1, .main h2, .main h3, .main p { text-align: center !important; }
-    /* Card Resi agar terlihat di Dark Mode */
+    /* Warna kartu dibuat lebih cerah agar tidak hilang di mode gelap */
     .resi-card {
-        background-color: rgba(255, 255, 255, 0.1); 
+        background-color: #2e3136; 
         padding: 15px; border-radius: 12px;
-        border: 1px solid rgba(255, 255, 255, 0.2);
+        border: 2px solid #4a4d52;
         margin-bottom: 10px; text-align: center;
-        font-weight: bold;
+        font-weight: bold; color: #ffffff;
     }
     [data-testid="stSidebar"] .stButton > button {
         width: 100%; text-align: left !important; border-radius: 8px;
     }
+    /* Kotak input dibuat lebih mencolok */
+    div[data-baseweb="input"] {
+        border: 2px solid #FF4B4B !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
-# --- SIDEBAR NAVIGASI (MENGEMBALIKAN MENU MONITORING) ---
+# --- SIDEBAR NAVIGASI (PERBAIKAN MONITORING) ---
 with st.sidebar:
     st.markdown("## 🛠️ Reparasi Pro")
     if st.button("📊 DASHBOARD UTAMA"): st.session_state.menu_aktif = "Dashboard"
@@ -90,10 +94,9 @@ if menu == "Dashboard":
         df = pd.DataFrame(data)
         for stat in ["Penyerahan", "Cetak", "Produksi"]:
             st.metric(f"📦 {stat.upper()}", f"{len(df[df['status_terakhir']==stat])} resi")
-    else:
-        st.info("Database kosong.")
+    else: st.info("Database kosong.")
 
-# --- LOGIKA SCAN (FIX INPUT CEPAT) ---
+# --- LOGIKA SCAN (OTOMATIS TANPA ENTER) ---
 elif "Scan" in menu:
     divisi = menu.replace("Scan ", "")
     st.markdown(f"# 🔍 Scan {divisi}")
@@ -106,16 +109,17 @@ elif "Scan" in menu:
         </script>
     """, height=0)
 
-    # Input Resi
+    # SISTEM DETEKSI OTOMATIS (Mencegah data hilang di HP)
     res_input = st.text_input("Arahkan Scanner Ke Sini:", key=f"in_{divisi}")
 
+    # Jika teks di kotak input berubah/terisi, langsung masukkan ke antrean
     if res_input:
         if res_input not in st.session_state.antrean_data[divisi]:
             st.session_state.antrean_data[divisi].append(res_input)
-            st.toast(f"✅ {res_input} ditambahkan")
+            st.toast(f"✅ {res_input} Masuk Antrean")
+            # Paksa rerun agar input bersih dan daftar muncul
             st.rerun()
 
-    # Tampilan Daftar Antrean
     curr_list = st.session_state.antrean_data[divisi]
     st.markdown(f"### 📋 Antrean ({len(curr_list)})")
     
@@ -133,7 +137,7 @@ elif "Scan" in menu:
             st.success("✅ Berhasil Disimpan!")
             st.rerun()
 
-# --- LOGIKA MONITORING (YANG SEBELUMNYA HILANG) ---
+# --- LOGIKA MONITORING ---
 elif "Mon " in menu:
     target = menu.replace("Mon ", "")
     st.markdown(f"# 🖥️ Monitor {target}")
@@ -141,26 +145,24 @@ elif "Mon " in menu:
     if data_mon:
         df_mon = pd.DataFrame(data_mon)
         filter_df = df_mon[df_mon['status_terakhir'] == target].copy()
-        st.write(f"Total di bagian ini: **{len(filter_df)} resi**")
+        st.write(f"Total: **{len(filter_df)} resi**")
         st.markdown("---")
         
         if not filter_df.empty:
-            filter_df = filter_df.iloc[::-1] # Urutkan terbaru di atas
+            filter_df = filter_df.iloc[::-1]
             for _, row in filter_df.iterrows():
                 late = False
                 if row.get('waktu_penyerahan'):
                     try:
                         w_awal = datetime.strptime(str(row['waktu_penyerahan']), "%Y-%m-%d %H:%M:%S")
-                        if (datetime.now() - w_awal).total_seconds() > 86400:
-                            late = True
+                        if (datetime.now() - w_awal).total_seconds() > 86400: late = True
                     except: pass
                 
                 with st.expander(f"{'🚨' if late else '📦'} {row['resi_id']} {'(>24 JAM!)' if late else ''}"):
                     st.write(f"📥 Penyerahan: {row.get('waktu_penyerahan') or '-'}")
                     st.write(f"🖨️ Cetak: {row.get('waktu_cetak') or '-'}")
                     st.write(f"⚒️ Produksi: {row.get('waktu_produksi') or '-'}")
-        else:
-            st.info(f"Belum ada data di bagian {target}.")
+        else: st.info("Kosong.")
 
 # --- LOGIKA LACAK ---
 elif menu == "Lacak":
@@ -171,11 +173,9 @@ elif menu == "Lacak":
         res = df[df['resi_id'].astype(str) == cari]
         if not res.empty:
             r = res.iloc[0]
-            st.subheader(f"Status Saat Ini: {r['status_terakhir']}")
-            tahapan = [("📥 Penyerahan", r.get('waktu_penyerahan')), ("🖨️ Cetak", r.get('waktu_cetak')), ("⚒️ Produksi", r.get('waktu_produksi')), ("🚚 Kirim", r.get('waktu_kirim'))]
-            for lab, val in tahapan:
+            st.subheader(f"Status: {r['status_terakhir']}")
+            for lab, val in [("📥 Penyerahan", r.get('waktu_penyerahan')), ("🖨️ Cetak", r.get('waktu_cetak')), ("⚒️ Produksi", r.get('waktu_produksi')), ("🚚 Kirim", r.get('waktu_kirim'))]:
                 c1, c2 = st.columns([1, 1])
                 c1.write(f"**{lab}**")
                 c2.write(f": {val or '-'}")
-        else:
-            st.error("Resi tidak ditemukan.")
+        else: st.error("Tidak ditemukan.")
