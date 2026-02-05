@@ -92,11 +92,12 @@ if menu == "Dashboard":
     else: st.info("Database kosong.")
 
 # --- LOGIKA SCAN (STABIL & AUTO-FOCUS) ---
+# --- LOGIKA SCAN (OPTIMASI RESPONS TOMBOL & INPUT) ---
 elif "Scan" in menu:
     divisi = menu.replace("Scan ", "")
     st.markdown(f"# 🔍 Scan {divisi}")
 
-    # Script Auto-Focus murni tanpa tampilan DeltaGenerator
+    # Script Auto-Focus agar kursor selalu siap di kotak input
     components.html("""
         <script>
         var input = window.parent.document.querySelector('input[data-testid="stTextInput-input"]');
@@ -104,31 +105,42 @@ elif "Scan" in menu:
         </script>
     """, height=0)
 
-    # Input Utama
-    def handle_input():
-        txt = st.session_state[f"in_{divisi}"]
-        if txt and txt not in st.session_state.antrean_data[divisi]:
-            st.session_state.antrean_data[divisi].append(txt)
-        st.session_state[f"in_{divisi}"] = ""
+    # Input Utama tanpa fungsi handle_input terpisah agar lebih responsif
+    res_input = st.text_input("Arahkan Scanner Ke Sini:", key=f"in_{divisi}")
 
-    st.text_input("Arahkan Scanner Ke Sini:", key=f"in_{divisi}", on_change=handle_input)
+    # Logika: Jika ada input baru, langsung masukkan ke session_state
+    if res_input:
+        if res_input not in st.session_state.antrean_data[divisi]:
+            st.session_state.antrean_data[divisi].append(res_input)
+            # Membersihkan input secara instan tanpa menunggu on_change
+            st.rerun()
 
     # List Antrean
     curr_list = st.session_state.antrean_data[divisi]
+    
+    # Header jumlah antrean
     st.markdown(f"### 📋 Antrean ({len(curr_list)})")
+    
+    # Menampilkan daftar resi yang masuk
     for i, resi in enumerate(curr_list):
         c1, c2 = st.columns([4, 1])
         c1.markdown(f"<div class='resi-card'>📦 {resi}</div>", unsafe_allow_html=True)
-        if c2.button("🗑️", key=f"del_{i}"):
+        if c2.button("🗑️", key=f"del_{divisi}_{i}"):
             st.session_state.antrean_data[divisi].pop(i)
             st.rerun()
 
-    if curr_list:
-        if st.button(f"🚀 KONFIRMASI {divisi.upper()}", type="primary", use_container_width=True):
-            simpan_ke_gsheet(curr_list, divisi)
-            st.session_state.antrean_data[divisi] = []
-            st.success("Berhasil Disimpan!")
-            st.rerun()
+    # TOMBOL KONFIRMASI (Hanya muncul jika ada data di list)
+    if len(curr_list) > 0:
+        st.write("") # Memberi jarak
+        if st.button(f"🚀 SELESAI & PINDAH KE {divisi.upper()}", type="primary", use_container_width=True):
+            with st.spinner("Menyimpan ke Database..."):
+                simpan_ke_gsheet(curr_list, divisi)
+                st.session_state.antrean_data[divisi] = []
+                st.success(f"✅ Berhasil! {len(curr_list)} resi dipindahkan ke {divisi}.")
+                # Jeda sebentar agar user bisa melihat pesan sukses
+                import time
+                time.sleep(1)
+                st.rerun()
 
 # --- LOGIKA MONITORING ---
 elif "Mon " in menu:
@@ -168,3 +180,4 @@ elif menu == "Lacak":
                 c1.write(f"**{lab}**")
                 c2.write(f": {val or '-'}")
         else: st.error("Resi tidak ditemukan.")
+
