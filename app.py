@@ -4,10 +4,8 @@ from google.oauth2.service_account import Credentials
 import pandas as pd
 from datetime import datetime
 import streamlit.components.v1 as components
-from camera_input_live import camera_input_live
-from pyzbar.pyzbar import decode
-import cv2
-import numpy as np
+
+
 # --- KONEKSI GSHEETS (VERSI AMAN SECRETS) ---
 @st.cache_resource
 def init_gsheet():
@@ -227,5 +225,6 @@ elif menu == "Lacak":
                 col1.write(f"**{label}**")
                 col2.write(f": {waktu or '-'}")
         else: st.error("❌ Resi tidak ditemukan.")
+
 
 
