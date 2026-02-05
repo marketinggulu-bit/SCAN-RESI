@@ -112,58 +112,34 @@ elif "Scan" in menu:
     divisi = menu.replace("Scan ", "")
     st.markdown(f"# 🔍 Scan {divisi}")
 
-    # Menampilkan area scanner hanya jika menu aktif
-    # Menggunakan container untuk memastikan script tidak merusak elemen UI lain
-    with st.container():
-        scan_result = components.html(
-            """
-            <script src="https://unpkg.com/html5-qrcode"></script>
-            <div id="reader" style="width:100%; border-radius:15px; background:#f8f9fa;"></div>
-            <script>
-                function onScanSuccess(decodedText, decodedResult) {
-                    window.parent.postMessage({
-                        type: 'streamlit:setComponentValue',
-                        value: decodedText
-                    }, '*');
-                }
-                
-                // Konfigurasi scanner yang lebih ringan agar tidak berat di HP
-                let html5QrcodeScanner = new Html5QrcodeScanner(
-                    "reader", { 
-                        fps: 10, 
-                        qrbox: {width: 250, height: 150},
-                        rememberLastUsedCamera: true
-                    }
-                );
-                html5QrcodeScanner.render(onScanSuccess);
-            </script>
-            """,
-            height=400,
-        )
+    # Mengembalikan fokus ke kotak input secara otomatis untuk scanner fisik
+    components.html(
+        """<script>
+        var input = window.parent.document.querySelector('input[data-testid="stTextInput-input"]');
+        if (input) { input.focus(); }
+        </script>""", height=0
+    )
 
-    # Logika penangkapan hasil scan
-    if scan_result:
-        # Cek apakah resi sudah ada di daftar antrean agar tidak duplikat
-        if scan_result not in st.session_state.antrean_data[divisi]:
-            st.session_state.antrean_data[divisi].append(scan_result)
-            st.toast(f"✅ Berhasil Scan: {scan_result}")
-            # Rerun otomatis agar daftar di bawah langsung terupdate
-            st.rerun()
-
-    st.markdown("---")
+    # Input manual / scanner tembak (Paling stabil untuk ratusan data)
+    val_manual = st.text_input("Klik di sini lalu Scan / Ketik Resi:", key=f"input_{divisi}")
     
-    # Input Manual tetap ada sebagai cadangan
-    val_manual = st.text_input("Ketik Manual / Scan Tembak:", key=f"input_{divisi}")
     if val_manual:
         if val_manual not in st.session_state.antrean_data[divisi]:
             st.session_state.antrean_data[divisi].append(val_manual)
             st.rerun()
 
+    st.write("---")
+    
+    # Opsi Kamera HP (Hanya muncul jika tombol diklik, agar tidak berat)
+    if st.button("📸 Buka Kamera HP"):
+        img_file = st.camera_input("Scan Barcode")
+        if img_file:
+            st.warning("Gunakan scanner tembak atau ketik manual untuk kecepatan maksimal.")
+
     # --- DAFTAR ANTREAN ---
     curr_list = st.session_state.antrean_data[divisi]
-    st.markdown(f"### 📋 Daftar Antrean {divisi} ({len(curr_list)})")
+    st.markdown(f"### 📋 Daftar Antrean ({len(curr_list)})")
     
-    # Menampilkan list resi yang sudah di-scan
     for i, resi in enumerate(curr_list):
         col_list, col_del = st.columns([4, 1])
         col_list.markdown(f"<div class='resi-card'>📦 {resi}</div>", unsafe_allow_html=True)
@@ -171,10 +147,8 @@ elif "Scan" in menu:
             st.session_state.antrean_data[divisi].pop(i)
             st.rerun()
 
-    # Tombol konfirmasi final ke Google Sheets
     if curr_list:
-        st.write("")
-        if st.button(f"🚀 SELESAI & PINDAH KE {divisi.upper()}", type="primary", use_container_width=True):
+        if st.button(f"🚀 KONFIRMASI KE {divisi.upper()}", type="primary", use_container_width=True):
             simpan_ke_gsheet(curr_list, divisi)
             st.session_state.antrean_data[divisi] = []
             st.success("✅ Data Berhasil Disimpan!")
@@ -233,6 +207,7 @@ elif menu == "Lacak":
                 col1.write(f"**{label}**")
                 col2.write(f": {waktu or '-'}")
         else: st.error("❌ Resi tidak ditemukan.")
+
 
 
 
