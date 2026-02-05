@@ -113,45 +113,54 @@ elif "Scan" in menu:
     divisi = menu.replace("Scan ", "")
     st.markdown(f"# 🔍 Scan {divisi} (Otomatis)")
 
-    # 1. Fitur Auto-Focus Tetap Ada untuk Scanner Fisik/Manual
-    components.html(
-        """<script>
-        var input = window.parent.document.querySelector('input[data-testid="stTextInput-input"]');
-        if (input) { input.focus(); }
-        </script>""", height=0,
+    # --- JAVASCRIPT SCANNER ENGINE ---
+    # Komponen ini menjalankan kamera dan mendeteksi barcode secara real-time di browser
+    scan_result = components.html(
+        """
+        <script src="https://unpkg.com/html5-qrcode"></script>
+        <div id="reader" style="width:100%; border-radius:15px; overflow:hidden;"></div>
+        <script>
+            function onScanSuccess(decodedText, decodedResult) {
+                // Kirim hasil scan ke Streamlit
+                window.parent.postMessage({
+                    type: 'streamlit:setComponentValue',
+                    value: decodedText
+                }, '*');
+                
+                // Berhenti scan sebentar agar tidak double input
+                html5QrcodeScanner.clear();
+                setTimeout(() => { location.reload(); }, 1000);
+            }
+
+            let html5QrcodeScanner = new Html5QrcodeScanner(
+                "reader", { fps: 15, qrbox: {width: 250, height: 150} }
+            );
+            html5QrcodeScanner.render(onScanSuccess);
+        </script>
+        """,
+        height=350,
     )
+
+    # Menangkap hasil dari JavaScript
+    if scan_result:
+        if scan_result not in st.session_state.antrean_data[divisi]:
+            st.session_state.antrean_data[divisi].append(scan_result)
+            st.toast(f"✅ Terdeteksi: {scan_result}")
+            st.rerun()
+
+    st.write("---")
     
-    # 2. Kotak Input Manual
-    val_manual = st.text_input("Ketik / Scan Manual:", key="input_resi")
+    # Input Manual tetap disediakan sebagai cadangan
+    val_manual = st.text_input("Ketik Manual (Jika Kamera Gagal):", key="input_resi")
     if val_manual:
         if val_manual not in st.session_state.antrean_data[divisi]:
             st.session_state.antrean_data[divisi].append(val_manual)
             st.rerun()
 
-    # 3. Kamera Scan Otomatis
-    st.write("---")
-    st.caption("Arahkan kamera ke barcode untuk scan otomatis")
-    image = camera_input_live(show_controls=False, key="auto_scan")
-
-    if image:
-        # Konversi gambar dari kamera ke format yang bisa dibaca OpenCV
-        bytes_data = image.read()
-        nparr = np.frombuffer(bytes_data, np.uint8)
-        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        
-        # Deteksi Barcode 
-        barcodes = decode(img)
-        
-        for barcode in barcodes:
-            barcode_data = barcode.data.decode('utf-8')
-            if barcode_data not in st.session_state.antrean_data[divisi]:
-                st.session_state.antrean_data[divisi].append(barcode_data)
-                st.toast(f"✅ Terdeteksi: {barcode_data}")
-                st.rerun()
-
-    # 4. Daftar Antrean
+    # --- DAFTAR ANTREAN ---
     curr_list = st.session_state.antrean_data[divisi]
-    st.markdown(f"### Daftar Antrean {divisi} ({len(curr_list)})")
+    st.markdown(f"### 📋 Antrean {divisi} ({len(curr_list)})")
+    
     for i, resi in enumerate(curr_list):
         st.markdown(f"<div class='resi-card'>📦 RESI: {resi}</div>", unsafe_allow_html=True)
         if st.button("🗑️ Hapus", key=f"del_{divisi}_{i}"):
@@ -164,7 +173,6 @@ elif "Scan" in menu:
             st.session_state.antrean_data[divisi] = []
             st.success("Data Berhasil Diperbarui!")
             st.rerun()
-
 # --- LOGIKA MONITORING ---
 elif "Mon " in menu:
     target = menu.replace("Mon ", "")
@@ -219,4 +227,5 @@ elif menu == "Lacak":
                 col1.write(f"**{label}**")
                 col2.write(f": {waktu or '-'}")
         else: st.error("❌ Resi tidak ditemukan.")
+
 
