@@ -5,7 +5,7 @@ import pandas as pd
 from datetime import datetime
 import streamlit.components.v1 as components
 
-# --- KONEKSI GSHEETS (VERSI AMAN SECRETS) ---
+# --- KONEKSI GSHEETS (AMAN & STABIL) ---
 @st.cache_resource
 def init_gsheet():
     creds_dict = st.secrets["gspread_credentials"] 
@@ -14,11 +14,10 @@ def init_gsheet():
     client = gspread.authorize(creds.with_scopes(scope))
     return client.open("DB_Reparasi_Produk").sheet1
 
-# Inisialisasi koneksi global agar tidak NameError
 try:
     sh = init_gsheet()
 except Exception as e:
-    st.error(f"Gagal koneksi GSheet: {e}")
+    st.error(f"Koneksi GSheet Terputus: {e}")
     st.stop()
 
 # --- INITIAL STATE ---
@@ -45,23 +44,19 @@ def simpan_ke_gsheet(list_resi, status_baru):
             row_data[kolom_idx[status_baru]-1] = waktu_skrg
             sh.append_row(row_data)
 
-# --- UI STYLE (DARK MODE FRIENDLY) ---
+# --- UI STYLE (DARK MODE & MOBILE FRIENDLY) ---
 st.set_page_config(page_title="Reparasi Pro", layout="centered")
 st.markdown("""
     <style>
-    /* Styling agar tetap nyaman di Dark Mode HP */
     .main h1, .main h2, .main h3, .main p { text-align: center !important; }
-    
-    /* Kartu Resi yang adaptif terhadap background */
+    /* Card resi yang tidak silau di Dark Mode */
     .resi-card {
-        background-color: rgba(255, 255, 255, 0.1); 
+        background-color: rgba(255, 255, 255, 0.05); 
         padding: 15px; border-radius: 12px;
-        border: 1px solid rgba(255, 255, 255, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.1);
         margin-bottom: 10px; text-align: center;
-        font-weight: bold; color: inherit;
+        font-weight: bold;
     }
-    
-    /* Mengatur tombol sidebar agar lebar penuh */
     [data-testid="stSidebar"] .stButton > button {
         width: 100%; text-align: left !important; border-radius: 8px;
     }
@@ -94,15 +89,14 @@ if menu == "Dashboard":
         df = pd.DataFrame(data)
         for stat in ["Penyerahan", "Cetak", "Produksi"]:
             st.metric(f"📦 {stat.upper()}", f"{len(df[df['status_terakhir']==stat])} resi")
-    else:
-        st.info("Belum ada data.")
+    else: st.info("Database kosong.")
 
-# --- LOGIKA SCAN (OPTIMAL UNTUK BARCODE TO WEB) ---
+# --- LOGIKA SCAN (STABIL & AUTO-FOCUS) ---
 elif "Scan" in menu:
     divisi = menu.replace("Scan ", "")
     st.markdown(f"# 🔍 Scan {divisi}")
 
-    # Script Auto-Focus
+    # Script Auto-Focus murni tanpa tampilan DeltaGenerator
     components.html("""
         <script>
         var input = window.parent.document.querySelector('input[data-testid="stTextInput-input"]');
@@ -110,14 +104,14 @@ elif "Scan" in menu:
         </script>
     """, height=0)
 
-    # Input ini akan otomatis diisi oleh aplikasi 'Barcode to Web'
-    def proses_input():
+    # Input Utama
+    def handle_input():
         txt = st.session_state[f"in_{divisi}"]
         if txt and txt not in st.session_state.antrean_data[divisi]:
             st.session_state.antrean_data[divisi].append(txt)
         st.session_state[f"in_{divisi}"] = ""
 
-    st.text_input("Klik di sini (Arahkan Scanner):", key=f"in_{divisi}", on_change=proses_input)
+    st.text_input("Arahkan Scanner Ke Sini:", key=f"in_{divisi}", on_change=handle_input)
 
     # List Antrean
     curr_list = st.session_state.antrean_data[divisi]
@@ -136,20 +130,22 @@ elif "Scan" in menu:
             st.success("Berhasil Disimpan!")
             st.rerun()
 
-# --- LOGIKA MONITORING (LIST RAMPING) ---
+# --- LOGIKA MONITORING ---
 elif "Mon " in menu:
     target = menu.replace("Mon ", "")
     st.markdown(f"# 🖥️ Monitor {target}")
-    df = pd.DataFrame(sh.get_all_records())
-    if not df.empty:
+    data = sh.get_all_records()
+    if data:
+        df = pd.DataFrame(data)
         f_df = df[df['status_terakhir'] == target].iloc[::-1]
         st.write(f"Total: **{len(f_df)} resi**")
         for _, r in f_df.iterrows():
             late = False
             if r['waktu_penyerahan']:
-                diff = datetime.now() - datetime.strptime(str(r['waktu_penyerahan']), "%Y-%m-%d %H:%M:%S")
-                if diff.total_seconds() > 86400: late = True
-            
+                try:
+                    diff = datetime.now() - datetime.strptime(str(r['waktu_penyerahan']), "%Y-%m-%d %H:%M:%S")
+                    if diff.total_seconds() > 86400: late = True
+                except: pass
             with st.expander(f"{'🚨' if late else '📦'} {r['resi_id']} {'(>24 JAM!)' if late else ''}"):
                 st.write(f"📥 Masuk: {r['waktu_penyerahan']}")
                 st.write(f"🖨️ Cetak: {r['waktu_cetak'] or '-'}")
@@ -166,8 +162,9 @@ elif menu == "Lacak":
         if not res.empty:
             r = res.iloc[0]
             st.subheader(f"Status: {r['status_terakhir']}")
-            for lab, val in [("📥 Penyerahan", r['waktu_penyerahan']), ("🖨️ Cetak", r['waktu_cetak']), ("⚒️ Produksi", r['waktu_produksi']), ("🚚 Kirim", r['waktu_kirim'])]:
+            tahapan = [("📥 Penyerahan", r['waktu_penyerahan']), ("🖨️ Cetak", r['waktu_cetak']), ("⚒️ Produksi", r['waktu_produksi']), ("🚚 Kirim", r['waktu_kirim'])]
+            for lab, val in tahapan:
                 c1, c2 = st.columns([1, 1])
                 c1.write(f"**{lab}**")
                 c2.write(f": {val or '-'}")
-        else: st.error("Tidak ditemukan.")
+        else: st.error("Resi tidak ditemukan.")
